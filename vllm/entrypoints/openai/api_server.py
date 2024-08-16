@@ -71,7 +71,6 @@ def model_is_embedding(model_name: str, trust_remote_code: bool) -> bool:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-
     async def _force_log():
         while True:
             await asyncio.sleep(10)
@@ -240,6 +239,36 @@ async def create_embedding(request: EmbeddingRequest, raw_request: Request):
         return JSONResponse(content=generator.model_dump())
 
 
+from vllm.lora.request import LoRARequest
+from pydantic import BaseModel
+
+
+class LoRARequestPOJO(BaseModel):
+    lora_name: str
+    lora_int_id: int
+    lora_path: str
+
+
+@router.post("/v1/add_lora")
+async def add_lora(request: LoRARequestPOJO):
+    lora_request = LoRARequest(request.dict())
+    openai_serving_chat.engine.add_lora(lora_request)
+    openai_serving_chat.lora_requests.append(lora_request)
+    openai_serving_completion.lora_requests.append(lora_request)
+    return JSONResponse(content={})
+
+
+@router.get("/v1/remove_lora")
+async def remove_lora(lora_int_id: int):
+    filtered = filter(lambda x: x["id"] == lora_int_id, openai_serving_chat.lora_requests)
+    for item in list(filtered):
+        openai_serving_chat.lora_requests.remove(item)
+        openai_serving_chat.engine.remove_lora(lora_int_id)
+        openai_serving_completion.engine.remove_lora(lora_int_id)
+
+    return JSONResponse(content={})
+
+
 def build_app(args: Namespace) -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.include_router(router)
@@ -290,8 +319,8 @@ def build_app(args: Namespace) -> FastAPI:
 
 
 async def init_app(
-    async_engine_client: AsyncEngineClient,
-    args: Namespace,
+        async_engine_client: AsyncEngineClient,
+        args: Namespace,
 ) -> FastAPI:
     app = build_app(args)
 

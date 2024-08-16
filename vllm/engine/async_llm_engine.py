@@ -536,6 +536,12 @@ class AsyncLLMEngine:
         # Lazy initialized fields
         self._request_tracker: RequestTracker
 
+    def add_lora(self, lora_request: LoRARequest) -> bool:
+        return self.engine.add_lora(lora_request)
+
+    def remove_lora(self, lora_id: int) -> bool:
+        return self.engine.remove_lora(lora_id)
+
     @classmethod
     def _get_executor_cls(
             cls, engine_config: EngineConfig) -> Type[ExecutorAsyncBase]:
