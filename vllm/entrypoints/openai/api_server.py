@@ -269,6 +269,36 @@ async def remove_lora(lora_int_id: int):
     return JSONResponse(content={})
 
 
+@router.get("/v1/sample_data")
+async def sample_data0(sample_data: str):
+    if sample_data == "generate":
+        return JSONResponse(content={
+            "code": 0,
+            "data": {
+                "prompt": "hi",
+                "repetition_penalty": 1.2,
+                "top_k": 10,
+                "top_p": 0.9,
+                "temperature": 0.6,
+                "max_new_tokens": 1024
+            }
+        })
+    else:
+        return JSONResponse(content={
+            "code": 0,
+            "data": {
+                "messages": [
+                    {"role": "user", "content": "hi"}
+                ],
+                "repetition_penalty": 1.2,
+                "top_k": 10,
+                "top_p": 0.9,
+                "temperature": 0.6,
+                "max_new_tokens": 1024
+            }
+        })
+
+
 def build_app(args: Namespace) -> FastAPI:
     app = FastAPI(lifespan=lifespan)
     app.include_router(router)
