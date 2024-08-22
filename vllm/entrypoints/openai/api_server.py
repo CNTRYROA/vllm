@@ -344,7 +344,7 @@ async def add_lora(request: LoRARequestPOJO):
 
 
 @router.get("/v1/remove_lora")
-async def remove_lora(lora_name: int):
+async def remove_lora(lora_name: str):
     filtered = filter(lambda x: x.lora_name == lora_name, openai_serving_chat.lora_requests)
     for item in list(filtered):
         openai_serving_completion.lora_requests.remove(item)
