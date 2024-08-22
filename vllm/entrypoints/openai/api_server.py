@@ -309,6 +309,7 @@ if envs.VLLM_TORCH_PROFILER_DIR:
         "Torch Profiler is enabled in the API server. This should ONLY be "
         "used for local development!")
 
+
     @router.post("/start_profile")
     async def start_profile():
         logger.info("Starting profiler...")
@@ -316,13 +317,13 @@ if envs.VLLM_TORCH_PROFILER_DIR:
         logger.info("Profiler started.")
         return Response(status_code=200)
 
+
     @router.post("/stop_profile")
     async def stop_profile():
         logger.info("Stopping profiler...")
         await async_engine_client.stop_profile()
         logger.info("Profiler stopped.")
         return Response(status_code=200)
-
 
 from vllm.lora.request import LoRARequest
 from pydantic import BaseModel
@@ -355,8 +356,8 @@ async def remove_lora(lora_int_id: int):
 
 
 @router.get("/v1/sample_data")
-async def sample_data0(sample_data: str):
-    if sample_data == "generate":
+async def sample_data0(llm_api_type: str | None = None):
+    if llm_api_type == "generate":
         return JSONResponse(content={
             "code": 0,
             "data": {
