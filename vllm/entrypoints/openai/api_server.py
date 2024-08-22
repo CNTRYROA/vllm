@@ -337,21 +337,18 @@ class LoRARequestPOJO(BaseModel):
 
 @router.post("/v1/add_lora")
 async def add_lora(request: LoRARequestPOJO):
-    lora_request = LoRARequest(request.dict())
-    openai_serving_chat.engine.add_lora(lora_request)
-    openai_serving_chat.lora_requests.append(lora_request)
+    lora_request = LoRARequest(**request.dict())
     openai_serving_completion.lora_requests.append(lora_request)
+    openai_serving_chat.lora_requests.append(lora_request)
     return JSONResponse(content={})
 
 
 @router.get("/v1/remove_lora")
-async def remove_lora(lora_int_id: int):
-    filtered = filter(lambda x: x["id"] == lora_int_id, openai_serving_chat.lora_requests)
+async def remove_lora(lora_name: int):
+    filtered = filter(lambda x: x.lora_name == lora_name, openai_serving_chat.lora_requests)
     for item in list(filtered):
+        openai_serving_completion.lora_requests.remove(item)
         openai_serving_chat.lora_requests.remove(item)
-        openai_serving_chat.engine.remove_lora(lora_int_id)
-        openai_serving_completion.engine.remove_lora(lora_int_id)
-
     return JSONResponse(content={})
 
 
