@@ -342,6 +342,7 @@ class BaiChuanBaseForCausalLM(nn.Module, SupportsLoRA, SupportsPP):
     embedding_modules = {}
     embedding_padding_modules = []
 
+
     # BitandBytes specific attributes
     default_bitsandbytes_target_modules = [
         ".W_pack.",
