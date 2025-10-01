@@ -90,8 +90,7 @@ def fused_moe_lora(
         return
 
     # get the expert_id to process curr shard
-    ind = lora_idx * stride_el + pid_m
-    expert_id = tl.load(expert_ids_ptr + ind, ind < top_k*stride_el, 0.0)
+    expert_id = tl.load(expert_ids_ptr + lora_idx * stride_el + pid_m)
     if expert_id >= num_experts:
         return
 
@@ -106,8 +105,8 @@ def fused_moe_lora(
 
     offs_token_id = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M).to(
         tl.int64)
-    token_ind = stride_tl * lora_idx + offs_token_id
-    offs_token = tl.load(sorted_token_ids_ptr + token_ind, token_ind < top_k*stride_tl, 0.0)
+    offs_token = tl.load(sorted_token_ids_ptr + stride_tl * lora_idx +
+                         offs_token_id)
     token_mask = offs_token < num_valid_tokens
 
     # get a_ptrs,b_ptrs
