@@ -34,9 +34,6 @@ from vllm.model_executor.layers.fused_moe.prepare_finalize import (
     MoEPrepareAndFinalizeNoEP,
     TopKWeightAndReduceContiguous,
 )
-from vllm.model_executor.layers.fused_moe.topk_weight_and_reduce import (
-    TopKWeightAndReduceNoOP,
-)
 from vllm.model_executor.layers.fused_moe.utils import (
     _resize_cache,
     activation_without_mul,
@@ -1920,7 +1917,7 @@ class TritonExperts(mk.FusedMoEPermuteExpertsUnpermute):
     ) -> tuple[tuple[int, ...], tuple[int, ...], tuple[int, ...], torch.dtype]:
         workspace1 = (M, topk, max(N // 2, K))
         workspace2 = (M, topk, max(N, K))
-        output = (M,topk, K)
+        output = (M, topk, K)
         return (workspace1, workspace2, output, a.dtype)
 
     def apply(
