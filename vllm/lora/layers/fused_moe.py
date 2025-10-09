@@ -17,8 +17,12 @@ from vllm.lora.layers.base import BaseLayerWithLoRA
 from vllm.lora.punica_wrapper.punica_base import PunicaWrapperBase
 from vllm.model_executor.layers.fused_moe import FusedMoE
 from vllm.model_executor.layers.fused_moe.config import (
-    FusedMoEQuantConfig,
+    FUSED_MOE_UNQUANTIZED_CONFIG,
     _get_config_dtype_str,
+    mxfp4_w4a16_moe_quant_config,
+)
+from vllm.model_executor.layers.fused_moe.fused_marlin_moe import (
+    modular_marlin_fused_moe,
 )
 from vllm.model_executor.layers.fused_moe.fused_moe import (
     modular_triton_fused_moe,
@@ -42,7 +46,28 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         base_layer = self.base_layer
         base_layer._lora = {}
         top_k = base_layer.top_k
-        quant_config = base_layer.quant_config
+
+        if base_layer.quant_config is None:
+            quant_config = FUSED_MOE_UNQUANTIZED_CONFIG
+        elif not isinstance(base_layer.quant_config, Mxfp4Config):
+            quant_config = base_layer.quant_config
+        else:
+            quant_config = mxfp4_w4a16_moe_quant_config(
+                w1_bias=base_layer.w13_bias,
+                w2_bias=base_layer.w2_bias,
+                w1_scale=base_layer.w13_weight_scale,
+                w2_scale=base_layer.w2_weight_scale,
+            )
+
+        m_fused_moe_fn = (
+            modular_triton_fused_moe(
+                quant_config, shared_experts=base_layer.shared_experts
+            )
+            if not quant_config.use_mxfp4_w4a16
+            else modular_marlin_fused_moe(
+                quant_config, shared_experts=base_layer.shared_experts
+            )
+        )
 
         def fwd_decorator(layer, func):
             def wrapper(*args, **kwargs):
@@ -77,11 +102,10 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                     )
                 )
                 config_dtype = _get_config_dtype_str(
+                    dtype=hidden_states.dtype,
                     use_fp8_w8a8=False,
                     use_int8_w8a16=False,
                     use_int4_w4a16=False,
-                    use_mxfp4_w4a4=False,
-                    dtype=hidden_states.dtype,
                 )
                 CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
                 num_tokens = hidden_states.size(0)
@@ -161,11 +185,10 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                         curr_topk_ids = layer._lora["topk_ids"]
 
                         config_dtype = _get_config_dtype_str(
+                            dtype=hidden_states.dtype,
                             use_fp8_w8a8=False,
                             use_int8_w8a16=False,
                             use_int4_w4a16=False,
-                            use_mxfp4_w4a4=False,
-                            dtype=hidden_states.dtype,
                         )
 
                         CHUNK_SIZE = envs.VLLM_FUSED_MOE_CHUNK_SIZE
@@ -229,11 +252,6 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                 return topk_weight_and_reduce
 
             return wrapper
-
-        m_fused_moe_fn = modular_triton_fused_moe(
-            quant_config if quant_config is not None else FusedMoEQuantConfig.make(),
-            shared_experts=base_layer.shared_experts,
-        )
 
         fused_experts = m_fused_moe_fn.fused_experts
 

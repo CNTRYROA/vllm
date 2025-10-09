@@ -150,7 +150,7 @@ def _fused_moe_lora_kernel(
 
 @torch.inference_mode()
 def _fused_moe_lora(
-    intermediate_cache1: torch.Tensor,
+    output: torch.Tensor,
     qcurr_hidden_states: torch.Tensor,
     lora_a_stacked: list[torch.Tensor],
     lora_b_stacked: list[torch.Tensor],
@@ -160,29 +160,12 @@ def _fused_moe_lora(
     num_tokens_post_padded: torch.Tensor,
     max_lora_rank: int,
     top_k_num: int,
-    # config:Optional[dict[str, Any]],
     block_size_m: int,
     block_size_n: int,
     block_size_k: int,
     group_size_m: int,
     mul_routed_weight: bool = False,
 ) -> None:
-    """_summary_
-
-    Args:
-        intermediate_cache1 (torch.Tensor): _description_
-        qcurr_hidden_states (torch.Tensor): _description_
-        w13_lora_a_stacked (list[torch.Tensor]): _description_
-        w13_lora_b_stacked (list[torch.Tensor]): _description_
-        topk_weights (torch.Tensor): _description_
-        sorted_token_ids (torch.Tensor): _description_
-        expert_ids (torch.Tensor): _description_
-        num_tokens_post_padded (torch.Tensor): _description_
-        max_lora_rank (int): _description_
-        top_k_num (int): _description_
-        config (_type_): _description_
-        intermediate_cache1 (torch.Tensor): _description_
-    """
     assert len(lora_a_stacked) == len(lora_b_stacked)
     device = qcurr_hidden_states.device
     num_slices = len(lora_a_stacked)
@@ -305,11 +288,11 @@ def _fused_moe_lora(
         **config,
     )
     for i in range(num_slices):
-        intermediate_cache1[:, :, i * N : (i + 1) * N] += b_intermediate_cache1[i]
+        output[:, :, i * N : (i + 1) * N] += b_intermediate_cache1[i]
 
 
 def _fused_moe_lora_fake(
-    intermediate_cache1: torch.Tensor,
+    output: torch.Tensor,
     qcurr_hidden_states: torch.Tensor,
     lora_a_stacked: list[torch.Tensor],
     lora_b_stacked: list[torch.Tensor],
@@ -319,7 +302,6 @@ def _fused_moe_lora_fake(
     num_tokens_post_padded: torch.Tensor,
     max_lora_rank: int,
     top_k_num: int,
-    # config:Optional[dict[str, Any]],
     block_size_m: int,
     block_size_n: int,
     block_size_k: int,
@@ -333,7 +315,7 @@ try:
     direct_register_custom_op(
         op_name="fused_moe_lora",
         op_func=_fused_moe_lora,
-        mutates_args=["intermediate_cache1"],
+        mutates_args=["output"],
         fake_impl=_fused_moe_lora_fake,
     )
     fused_moe_lora = torch.ops.vllm.fused_moe_lora
