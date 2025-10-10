@@ -257,7 +257,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w1_lora_a_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 lora_config.max_lora_rank,
                 self.base_layer.hidden_size,
             ),
@@ -267,7 +267,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w1_lora_b_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 self.base_layer.intermediate_size_per_partition,
                 lora_config.max_lora_rank,
             ),
@@ -278,7 +278,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w2_lora_a_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 lora_config.max_lora_rank,
                 self.base_layer.intermediate_size_per_partition,
             ),
@@ -288,7 +288,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w2_lora_b_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 self.base_layer.hidden_size,
                 lora_config.max_lora_rank,
             ),
@@ -299,7 +299,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w3_lora_a_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 lora_config.max_lora_rank,
                 self.base_layer.hidden_size,
             ),
@@ -309,7 +309,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.w3_lora_b_stacked = torch.zeros(
             (
                 max_loras,
-                self.base_layer.global_num_experts,
+                self.base_layer.local_num_experts,
                 self.base_layer.intermediate_size_per_partition,
                 lora_config.max_lora_rank,
             ),
@@ -328,7 +328,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
         self.lora_a_stacked = []
         self.lora_b_stacked = []
         for lora_id in range(max_loras):
-            for experts_id in range(self.base_layer.global_num_experts):
+            for experts_id in range(self.base_layer.local_num_experts):
                 # gate_proj,down_proj,up_proj
                 self.lora_a_stacked.append(self.w1_lora_a_stacked[lora_id][experts_id])
                 self.lora_a_stacked.append(self.w2_lora_a_stacked[lora_id][experts_id])
@@ -357,6 +357,12 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
     ):
         """Overwrites lora tensors at index."""
         for eid in range(len(lora_a) // 3):
+            if self.base_layer.use_ep:
+                # convert to local_expert_id
+                eid = self.base_layer.expert_map[eid]
+                if eid == -1:
+                    continue
+
             w1_lora_a = lora_a[eid * 3]
             w2_lora_a = lora_a[eid * 3 + 1]
             w3_lora_a = lora_a[eid * 3 + 2]
@@ -364,7 +370,7 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
             w2_lora_b = lora_b[eid * 3 + 1]
             w3_lora_b = lora_b[eid * 3 + 2]
 
-            if self.tp_size > 1:
+            if not self.base_layer.use_ep and self.tp_size > 1:
                 shard_size = self.base_layer.intermediate_size_per_partition
                 start_idx = self.tp_rank * shard_size
                 end_idx = (self.tp_rank + 1) * shard_size
