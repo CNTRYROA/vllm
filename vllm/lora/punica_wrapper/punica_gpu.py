@@ -92,9 +92,6 @@ class PunicaWrapperGPU(PunicaWrapperBase):
             scale (float): Scaling factor for the operation
         """
 
-        # note @gnovack - force input to be contiguous to support eager mode
-        x = x.contiguous()
-
         x = x.view(-1, x.shape[-1])
         lora_shrink(
             x,
@@ -320,7 +317,6 @@ class PunicaWrapperGPU(PunicaWrapperBase):
         max_lora_rank: int,
         top_k_num: int,
         config,
-        adapter_enabled: torch.Tensor,
         mul_routed_weight=False,
     ):
         fused_moe_lora(
@@ -334,8 +330,6 @@ class PunicaWrapperGPU(PunicaWrapperBase):
             num_tokens_post_padded,
             max_lora_rank,
             top_k_num,
-            *self.token_mapping_meta.meta_args(x.size(0)),
-            adapter_enabled,
             config["BLOCK_SIZE_M"],
             config["BLOCK_SIZE_N"],
             config["BLOCK_SIZE_K"],
