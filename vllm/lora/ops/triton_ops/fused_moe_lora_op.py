@@ -47,6 +47,8 @@ def _fused_moe_lora_kernel(
     EM,
     num_valid_tokens,
     num_experts,
+    lora_ids,
+    adapter_enabled,
     # The stride variables represent how much to increase the ptr by when
     # moving by 1 element in a particular dimension. E.g. `stride_am` is
     # how much to increase `a_ptr` by to get the element one row down
@@ -77,6 +79,12 @@ def _fused_moe_lora_kernel(
     pid = tl.program_id(axis=0)
     slice_id = tl.program_id(axis=1)
     lora_idx = tl.program_id(axis=2)
+
+    lora_id = tl.load(lora_ids + lora_idx)
+    moe_enabled = tl.load(adapter_enabled + lora_idx)
+    if lora_id == -1 or moe_enabled == 0:
+        # Early exit for the no-lora case.
+        return
 
     # calculate pid_m,pid_n
     num_pid_m = tl.cdiv(EM, BLOCK_SIZE_M)
@@ -160,6 +168,13 @@ def _fused_moe_lora(
     num_tokens_post_padded: torch.Tensor,
     max_lora_rank: int,
     top_k_num: int,
+    token_lora_mapping: torch.Tensor,  # shape [num_tokens]
+    token_indices_sorted_by_lora_ids: torch.Tensor,  # shape [num_tokens]
+    num_tokens_per_lora: torch.Tensor,  # shape [max-loras + 1]
+    lora_token_start_loc: torch.Tensor,  # shape [max-loras + 2]
+    lora_ids: torch.Tensor,  # shape [max-loras + 1]
+    no_lora_flag_cpu: torch.Tensor,  # shape [1]
+    adapter_enabled: torch.Tensor, # shape [max-loras]
     # config:Optional[dict[str, Any]],
     block_size_m:int,
     block_size_n:int,
@@ -183,6 +198,12 @@ def _fused_moe_lora(
         config (_type_): _description_
         intermediate_cache1 (torch.Tensor): _description_
     """
+
+    assert no_lora_flag_cpu.numel() == 1
+    if no_lora_flag_cpu.item():
+        # None of the inputs require LoRA
+        return
+
     assert len(lora_a_stacked) == len(lora_b_stacked)
     device = qcurr_hidden_states.device
     num_slices = len(lora_a_stacked)
@@ -242,6 +263,8 @@ def _fused_moe_lora(
                          EM,
                          num_tokens,
                          num_experts,
+                         lora_ids,
+                         adapter_enabled,
                          qcurr_hidden_states.stride(0),
                          qcurr_hidden_states.stride(1),
                          w1_lora_a_stacked.stride(0),
@@ -287,6 +310,8 @@ def _fused_moe_lora(
         EM,
         num_tokens,
         num_experts,
+        lora_ids,
+        adapter_enabled,
         a_intermediate_cache1.stride(1),
         a_intermediate_cache1.stride(2),
         w1_lora_b_stacked.stride(0),
@@ -324,6 +349,13 @@ def _fused_moe_lora_fake(
     block_size_n:int,
     block_size_k:int,
     group_size_m:int,
+    token_lora_mapping: torch.Tensor,  # shape [num_tokens]
+    token_indices_sorted_by_lora_ids: torch.Tensor,  # shape [num_tokens]
+    num_tokens_per_lora: torch.Tensor,  # shape [max-loras + 1]
+    lora_token_start_loc: torch.Tensor,  # shape [max-loras + 2]
+    lora_ids: torch.Tensor,  # shape [max-loras + 1]
+    no_lora_flag_cpu: torch.Tensor,  # shape [1]
+    no_moe_lora_flag_cpu: torch.Tensor,
     mul_routed_weight:bool=False,
 ) -> None:
     return
