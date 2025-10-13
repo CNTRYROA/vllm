@@ -33,11 +33,15 @@ __global__ void moe_lora_align_sum_kernel(
     int64_t block_size, int num_experts, int max_loras, size_t numel,
     int max_num_tokens_padded, int max_num_m_blocks,
     int32_t* __restrict__ sorted_token_ids, int32_t* __restrict__ expert_ids,
-    int topk_num, int32_t* total_tokens_post_pad) {
+    int topk_num, int32_t* total_tokens_post_pad, int32_t* num_tokens_per_lora, int32_t* adapter_enabled) {
   const size_t tokens_per_thread = CEILDIV(numel, blockDim.x);
   const size_t start_idx = threadIdx.x * tokens_per_thread;
 
   int lora_id = blockIdx.x;
+  if (adapter_enabled[lora_id] * num_tokens_per_lora[lora_id] == 0) {
+    return;
+  }
+
   extern __shared__ int32_t shared_mem[];
   int32_t* cumsum = shared_mem;
   token_cnts_t* tokens_cnts = (token_cnts_t*)(shared_mem + num_experts + 1);
@@ -124,9 +128,10 @@ void moe_lora_align_block_size(torch::Tensor topk_ids,
                                int64_t max_loras,
                                torch::Tensor sorted_token_ids,
                                torch::Tensor expert_ids,
-                               torch::Tensor num_tokens_post_pad) {
+                               torch::Tensor num_tokens_post_pad,
+                               torch::Tensor num_tokens_per_lora,
+                               torch::Tensor adapter_enabled) {
   const int topk_num = topk_ids.size(1);
-
   int max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1);
   max_num_tokens_padded = round_up(max_num_tokens_padded, block_size);
   int max_num_m_blocks = CEILDIV(max_num_tokens_padded, block_size);
@@ -160,6 +165,7 @@ void moe_lora_align_block_size(torch::Tensor topk_ids,
             max_loras, topk_ids.numel(), max_num_tokens_padded,
             max_num_m_blocks, sorted_token_ids.data_ptr<int32_t>(),
             expert_ids.data_ptr<int32_t>(), topk_num,
-            num_tokens_post_pad.data_ptr<int32_t>());
+            num_tokens_post_pad.data_ptr<int32_t>(), num_tokens_per_lora.data_ptr<int32_t>(), 
+            adapter_enabled.data_ptr<int32_t>());
       });
 }
