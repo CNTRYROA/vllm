@@ -89,6 +89,9 @@ def moe_align_block_size(
 def moe_lora_align_block_size(
     topk_ids: torch.Tensor,
     token_lora_mapping: torch.Tensor,
+    num_tokens_per_lora: torch.Tensor,  # shape [max-loras + 1]
+    no_lora_flag_cpu: torch.Tensor,  # shape [1]
+    adapter_enabled: torch.Tensor, # shape [max-loras]
     block_size: int,
     num_experts: int,
     max_loras: int,
@@ -119,6 +122,9 @@ def moe_lora_align_block_size(
     ops.moe_lora_align_block_size(
         topk_ids,
         token_lora_mapping,
+        num_tokens_per_lora,
+        no_lora_flag_cpu,
+        adapter_enabled,
         num_experts,
         block_size,
         max_loras,
