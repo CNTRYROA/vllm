@@ -307,19 +307,39 @@ class PunicaWrapperGPU(PunicaWrapperBase):
         max_num_tokens_padded = topk_ids.numel() + num_experts * (block_size - 1)
         if pad_sorted_ids:
             max_num_tokens_padded = round_up(max_num_tokens_padded, block_size)
-        sorted_ids = torch.empty(
+
+        # TODO Replace full with empty to minimize the number of kernel launches.
+        # sorted_ids = torch.empty(
+        #     (max_loras * max_num_tokens_padded,),
+        #     dtype=torch.int32,
+        #     device=topk_ids.device,
+        # )
+
+        sorted_ids = torch.full(
             (max_loras * max_num_tokens_padded,),
+            topk_ids.numel(),
             dtype=torch.int32,
             device=topk_ids.device,
         )
+
         max_num_m_blocks = triton.cdiv(max_num_tokens_padded, block_size)
         # Expert ids must be set default to -1 to prevent a blank block
-        expert_ids = torch.empty(
+        # expert_ids = torch.empty(
+        #     (max_loras * max_num_m_blocks,),
+        #     dtype=torch.int32,
+        #     device=topk_ids.device,
+        # )
+        # num_tokens_post_pad = torch.empty(
+        #     (max_loras), dtype=torch.int32, device=topk_ids.device
+        # )
+
+        expert_ids = torch.full(
             (max_loras * max_num_m_blocks,),
+            -1,
             dtype=torch.int32,
             device=topk_ids.device,
         )
-        num_tokens_post_pad = torch.empty(
+        num_tokens_post_pad = torch.zeros(
             (max_loras), dtype=torch.int32, device=topk_ids.device
         )
 
