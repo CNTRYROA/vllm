@@ -24,6 +24,7 @@ from vllm.model_executor.layers.fused_moe.fused_marlin_moe import modular_marlin
 from vllm.model_executor.layers.fused_moe.moe_align_block_size import (
     moe_lora_align_block_size)
 
+from vllm.vllm.lora.ops.triton_ops.utils_new import get_v1_op_configs
 
 class FusedMoEWithLoRA(BaseLayerWithLoRA):
 
@@ -87,21 +88,60 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                 num_tokens = hidden_states.size(0)
                 M = min(num_tokens, CHUNK_SIZE)
 
-                get_config_func = functools.partial(
-                    try_get_optimal_moe_config,
-                    layer.w13_weight.size(),
-                    layer.w2_weight.size(),
-                    top_k,
-                    config_dtype,
-                    block_shape=layer.quant_method.moe_quant_config.
-                    block_shape,
-                )
+                # get_config_func = functools.partial(
+                #     try_get_optimal_moe_config,
+                #     layer.w13_weight.size(),
+                #     layer.w2_weight.size(),
+                #     top_k,
+                #     config_dtype,
+                #     block_shape=layer.quant_method.moe_quant_config.
+                #     block_shape,
+                # )
 
-                config = get_config_func(M)
+                # config = get_config_func(M)
+                user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
+                if M > 16 or (not user_defined_config_folder):
+                    get_config_func = functools.partial(
+                        try_get_optimal_moe_config,
+                        layer.w13_weight.size(),
+                        layer.w2_weight.size(),
+                        top_k,
+                        config_dtype,
+                        block_shape=layer.quant_method.moe_quant_config.
+                        block_shape,
+                    )
+                    shrink_config = get_config_func(M)
+                    expand_config = shrink_config
+                else:
+                    shrink_config = get_v1_op_configs(
+                        op_type="fused_moe_lora_gate_up_shrink",
+                        max_loras=layer.w1_lora_a_stacked.shape[0],
+                        batch=M,
+                        hidden_size=layer.w1_lora_a_stacked.shape[-1],
+                        rank=layer.w1_lora_a_stacked.shape[-2],
+                        num_slices=2,
+                        hidden_size_2=layer.w1_lora_b_stacked.shape[-2]
+                    )
+
+                    expand_config = get_v1_op_configs(
+                        op_type="fused_moe_lora_gate_up_expand",
+                        max_loras=layer.w1_lora_a_stacked.shape[0],
+                        batch=M,
+                        hidden_size=layer.w1_lora_a_stacked.shape[-1],
+                        rank=layer.w1_lora_a_stacked.shape[-2],
+                        num_slices=2,
+                        hidden_size_2=layer.w1_lora_b_stacked.shape[-2]
+                    )
+                    # print("Using user-defined fused MoE LoRA configs.")
+                    # for k, v in shrink_config.items():
+                    #     print(f"shrink_config: {k}: {v}")
+                    # for k, v in expand_config.items():
+                    #     print(f"expand_config: {k}: {v}")
+
                 (sorted_token_ids_lora, expert_ids_lora,
                  num_tokens_post_padded_lora) = (moe_lora_align_block_size(
-                     curr_topk_ids, token_lora_mapping, num_tokens_per_lora, no_lora_flag_cpu, 
-                     layer.adapter_enabled, config['BLOCK_SIZE_M'],
+                     curr_topk_ids, token_lora_mapping, num_tokens_per_lora, no_lora_flag_cpu,
+                     layer.adapter_enabled, shrink_config['BLOCK_SIZE_M'],
                      global_num_experts, curr_topk_ids.shape[-1], expert_map))
 
                 layer._lora["sorted_token_ids_lora"] = sorted_token_ids_lora
@@ -133,7 +173,8 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                     num_tokens_post_padded_lora,
                     max_lora_rank,
                     top_k,
-                    config,
+                    shrink_config,
+                    expand_config,
                     layer.adapter_enabled,
                 )
 
@@ -161,17 +202,51 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                 num_tokens = hidden_states.size(0)
                 M = min(num_tokens, CHUNK_SIZE)
 
-                get_config_func = functools.partial(
-                    try_get_optimal_moe_config,
-                    layer.w13_weight.size(),
-                    layer.w2_weight.size(),
-                    top_k,
-                    config_dtype,
-                    block_shape=layer.quant_method.moe_quant_config.
-                    block_shape,
-                )
+                # get_config_func = functools.partial(
+                #     try_get_optimal_moe_config,
+                #     layer.w13_weight.size(),
+                #     layer.w2_weight.size(),
+                #     top_k,
+                #     config_dtype,
+                #     block_shape=layer.quant_method.moe_quant_config.
+                #     block_shape,
+                # )
 
-                config = get_config_func(M)
+                # config = get_config_func(M)
+                user_defined_config_folder = envs.VLLM_TUNED_CONFIG_FOLDER
+                if M > 16 or (not user_defined_config_folder):
+                    get_config_func = functools.partial(
+                        try_get_optimal_moe_config,
+                        layer.w13_weight.size(),
+                        layer.w2_weight.size(),
+                        top_k,
+                        config_dtype,
+                        block_shape=layer.quant_method.moe_quant_config.
+                        block_shape,
+                    )
+                    shrink_config = get_config_func(M)
+                    expand_config = shrink_config
+                else:
+                    shrink_config = get_v1_op_configs(
+                        op_type="fused_moe_lora_down_shrink",
+                        max_loras=layer.w2_lora_a_stacked.shape[0],
+                        batch=M,
+                        hidden_size=layer.w2_lora_a_stacked.shape[-1],
+                        rank=layer.w2_lora_a_stacked.shape[-2],
+                        num_slices=1,
+                        hidden_size_2=layer.w2_lora_b_stacked.shape[-2]
+                    )
+
+                    expand_config = get_v1_op_configs(
+                        op_type="fused_moe_lora_down_expand",
+                        max_loras=layer.w2_lora_a_stacked.shape[0],
+                        batch=M,
+                        hidden_size=layer.w2_lora_a_stacked.shape[-1],
+                        rank=layer.w2_lora_a_stacked.shape[-2],
+                        num_slices=1,
+                        hidden_size_2=layer.w2_lora_b_stacked.shape[-2]
+                    )
+
                 w1_lora_a_stacked = layer.w1_lora_a_stacked
                 w2_lora_a_stacked = layer.w2_lora_a_stacked
                 w2_lora_b_stacked = layer.w2_lora_b_stacked
@@ -191,10 +266,19 @@ class FusedMoEWithLoRA(BaseLayerWithLoRA):
                 intermediate_cache3 = args[0]
 
                 layer.punica_wrapper.add_lora_fused_moe(
-                    intermediate_cache3, intermediate_cache2,
-                    [w2_lora_a_stacked], [w2_lora_b_stacked], topk_weights,
-                    sorted_token_ids_lora, expert_ids_lora,
-                    num_tokens_post_padded_lora, max_lora_rank, top_k, config, layer.adapter_enabled,
+                    intermediate_cache3, 
+                    intermediate_cache2,
+                    [w2_lora_a_stacked], 
+                    [w2_lora_b_stacked], 
+                    topk_weights,
+                    sorted_token_ids_lora, 
+                    expert_ids_lora,
+                    num_tokens_post_padded_lora, 
+                    max_lora_rank, 
+                    top_k, 
+                    shrink_config, 
+                    expand_config,
+                    layer.adapter_enabled,
                     True)
 
                 result = func(*args, **kwargs)
