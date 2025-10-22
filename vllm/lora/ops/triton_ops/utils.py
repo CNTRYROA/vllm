@@ -154,13 +154,14 @@ def load_v1_op_config(op_type: str,
         gpu_name = gpu_name.replace('-', '_')
 
         config_fname = None
-        if op_type == "shrink":
-            config_fname = f"{gpu_name}_{op_type.upper()}.json"
+        # only expand op needs to consider add_inputs
+        if op_type == "expand":
+            config_fname = (
+                f"{gpu_name}_{op_type.upper()}_{str(add_inputs).upper()}.json"
+            )
         else:
-            assert op_type == "expand"
-            config_fname = (f"{gpu_name}_"
-                            f"{op_type.upper()}_"
-                            f"{str(add_inputs).upper()}.json")
+            config_fname = (f"{gpu_name}_{op_type.upper()}.json")
+
 
         config_path = Path(
             f'{user_defined_config_folder}/{config_fname}'
@@ -187,9 +188,13 @@ def get_v1_op_configs(
         hidden_size: int,
         rank: int,
         num_slices: int,
-        add_inputs: Optional[bool] = None) -> dict[str, Optional[int]]:
+        add_inputs: Optional[bool] = None,
+        hidden_size_2: Optional[int] = None,) -> dict[str, Optional[int]]:
 
-    assert op_type in ["shrink", "expand"]
+    # Add support for fused_moe_lora ops
+    assert op_type in ["shrink", "expand", 
+                       "fused_moe_lora_gate_up_shrink", "fused_moe_lora_gate_up_expand", 
+                       "fused_moe_lora_down_shrink", "fused_moe_lora_down_expand"]
 
     # default config
     default = {}
@@ -204,6 +209,18 @@ def get_v1_op_configs(
             'num_stages': 2,
             'max_nreg': None
         }
+
+    elif op_type in ["fused_moe_lora_gate_up_shrink", "fused_moe_lora_gate_up_expand", 
+                     "fused_moe_lora_down_shrink", "fused_moe_lora_down_expand"]:
+        default = {
+            "block_m": 64,
+            "block_n": 64,
+            "block_k": 32,
+            "num_warps": 4,
+            "num_stages": 3,
+            "group_size_m": 8,
+        }
+
     else:
         default = {
             'block_m': 64,
@@ -239,6 +256,14 @@ def get_v1_op_configs(
     # slice by n
     config_data = config_data.get(str(n)) or config_data[min(
         config_data.keys(), key=lambda x: abs(int(x) - n))]
+    
+    # slice by hidden_size_2
+    if hidden_size_2 is not None:
+        n2 = hidden_size_2
+        config_data = (
+            config_data.get(str(n2))
+            or config_data[min(config_data.keys(), key=lambda x: abs(int(x) - n2))]
+        )
 
     assert config_data is not None
     return config_data
